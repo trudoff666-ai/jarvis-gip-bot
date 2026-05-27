@@ -9,13 +9,15 @@ for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
     )
 )
 
+set PYTHON=C:\Users\User\AppData\Local\Programs\Python\Python313\python.exe
+
 echo Проверка зависимостей...
-python -m pip install -q python-telegram-bot anthropic
+"%PYTHON%" -m pip install -q python-telegram-bot anthropic
 
 echo.
 echo ==========================================
 echo   Джарвис — Главный Инженер Проекта
 echo ==========================================
 echo.
-python jarvis_bot.py
+"%PYTHON%" jarvis_bot.py
 pause

@@ -86,22 +86,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     history = get_history(chat_id)
     history.append({"role": "user", "content": user_text})
 
-    response = await asyncio.get_running_loop().run_in_executor(
-        None,
-        lambda: client.messages.create(
-            model="claude-opus-4-7",
+    try:
+        reply_chunks = []
+        sent_message = None
+
+        with client.messages.stream(
+            model="claude-haiku-4-5-20251001",
             max_tokens=4096,
             system=JARVIS_SYSTEM_PROMPT,
             messages=history
-        )
-    )
+        ) as stream:
+            buffer = ""
+            for text in stream.text_stream:
+                buffer += text
+                if len(buffer) >= 200 and buffer.endswith((" ", "\n", ".", "!", "?")):
+                    reply_chunks.append(buffer)
+                    buffer = ""
+                    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+            if buffer:
+                reply_chunks.append(buffer)
 
-    reply = response.content[0].text
-    history.append({"role": "assistant", "content": reply})
-
-    # Telegram ограничение: 4096 символов на сообщение
-    for i in range(0, len(reply), 4000):
-        await update.message.reply_text(reply[i:i+4000])
+        reply = "".join(reply_chunks)
+        history.append({"role": "assistant", "content": reply})
+        for i in range(0, len(reply), 4000):
+            await update.message.reply_text(reply[i:i+4000])
+    except Exception as e:
+        history.pop()
+        print(f"Ошибка в handle_message: {type(e).__name__}: {e}")
+        await update.message.reply_text(f"Ошибка: {type(e).__name__}: {e}")
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -142,22 +154,25 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     })
 
-    response = await asyncio.get_running_loop().run_in_executor(
-        None,
-        lambda: client.messages.create(
-            model="claude-opus-4-7",
-            max_tokens=8192,
-            system=JARVIS_SYSTEM_PROMPT,
-            messages=history,
-            betas=["pdfs-2024-09-25"]
+    try:
+        response = await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=8192,
+                system=JARVIS_SYSTEM_PROMPT,
+                messages=history,
+                betas=["pdfs-2024-09-25"]
+            )
         )
-    )
-
-    reply = response.content[0].text
-    history.append({"role": "assistant", "content": reply})
-
-    for i in range(0, len(reply), 4000):
-        await update.message.reply_text(reply[i:i+4000])
+        reply = response.content[0].text
+        history.append({"role": "assistant", "content": reply})
+        for i in range(0, len(reply), 4000):
+            await update.message.reply_text(reply[i:i+4000])
+    except Exception as e:
+        history.pop()
+        print(f"Ошибка в handle_document: {type(e).__name__}: {e}")
+        await update.message.reply_text(f"Ошибка при анализе PDF: {type(e).__name__}: {e}")
 
 def main():
     if not BOT_TOKEN:
