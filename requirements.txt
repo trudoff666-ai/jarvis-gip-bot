@@ -2,3 +2,5 @@ python-telegram-bot==22.7
 anthropic==0.104.1
 SpeechRecognition==3.11.0
 pydub==0.25.1
+fastapi==0.115.0
+uvicorn==0.32.0
