@@ -1,1 +1,1 @@
-worker: python jarvis_bot.py
+web: python jarvis_bot.py
