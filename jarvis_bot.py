@@ -255,8 +255,27 @@ def main():
     app.add_handler(MessageHandler(filters.Document.PDF, handle_document))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
-    print("Джарвис работает.")
-    app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
+    import time
+
+    for attempt in range(10):
+        try:
+            print(f"Джарвис запускается (попытка {attempt + 1})...")
+            app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
+            break
+        except Exception as e:
+            if "Conflict" in str(e) and attempt < 9:
+                wait = 15 * (attempt + 1)
+                print(f"Конфликт с другим экземпляром. Жду {wait}с...")
+                time.sleep(wait)
+                app = Application.builder().token(BOT_TOKEN).build()
+                app.add_handler(CommandHandler("start", start))
+                app.add_handler(CommandHandler("help", help_cmd))
+                app.add_handler(CommandHandler("clear", clear))
+                app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+                app.add_handler(MessageHandler(filters.Document.PDF, handle_document))
+                app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+            else:
+                raise
 
 if __name__ == "__main__":
     main()
