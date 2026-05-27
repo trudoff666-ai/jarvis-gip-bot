@@ -161,8 +161,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 model="claude-sonnet-4-6",
                 max_tokens=8192,
                 system=JARVIS_SYSTEM_PROMPT,
-                messages=history,
-                betas=["pdfs-2024-09-25"]
+                messages=history
             )
         )
         reply = response.content[0].text
