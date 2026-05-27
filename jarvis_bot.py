@@ -255,8 +255,20 @@ def main():
     app.add_handler(MessageHandler(filters.Document.PDF, handle_document))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
-    print("Джарвис работает. Ctrl+C для остановки.")
-    app.run_polling()
+    webhook_url = os.environ.get("WEBHOOK_URL", "")
+    port = int(os.environ.get("PORT", 8443))
+
+    if webhook_url:
+        print(f"Джарвис запускается на webhook: {webhook_url}")
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            webhook_url=webhook_url,
+            drop_pending_updates=True,
+        )
+    else:
+        print("Джарвис работает в режиме polling.")
+        app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
