@@ -6,6 +6,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from telegram.constants import ChatAction
 import tempfile
 import base64
+import speech_recognition as sr
+from pydub import AudioSegment
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -173,6 +175,68 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"Ошибка в handle_document: {type(e).__name__}: {e}")
         await update.message.reply_text(f"Ошибка при анализе PDF: {type(e).__name__}: {e}")
 
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    await update.message.reply_text("Слушаю...")
+    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+
+    try:
+        voice = update.message.voice
+        file = await context.bot.get_file(voice.file_id)
+
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as ogg_tmp:
+            await file.download_to_drive(ogg_tmp.name)
+            ogg_path = ogg_tmp.name
+
+        wav_path = ogg_path.replace(".ogg", ".wav")
+        audio = AudioSegment.from_ogg(ogg_path)
+        audio.export(wav_path, format="wav")
+
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(wav_path) as source:
+            audio_data = recognizer.record(source)
+
+        text = recognizer.recognize_google(audio_data, language="ru-RU")
+        print(f"Голос распознан: {text}")
+
+        await update.message.reply_text(f"🎤 Распознано: {text}")
+
+        history = get_history(chat_id)
+        history.append({"role": "user", "content": text})
+
+        try:
+            reply_chunks = []
+            with client.messages.stream(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=4096,
+                system=JARVIS_SYSTEM_PROMPT,
+                messages=history
+            ) as stream:
+                buffer = ""
+                for chunk in stream.text_stream:
+                    buffer += chunk
+                    if len(buffer) >= 200 and buffer.endswith((" ", "\n", ".", "!", "?")):
+                        reply_chunks.append(buffer)
+                        buffer = ""
+                        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+                if buffer:
+                    reply_chunks.append(buffer)
+
+            reply = "".join(reply_chunks)
+            history.append({"role": "assistant", "content": reply})
+            for i in range(0, len(reply), 4000):
+                await update.message.reply_text(reply[i:i+4000])
+        except Exception as e:
+            history.pop()
+            await update.message.reply_text(f"Ошибка ответа: {e}")
+
+    except sr.UnknownValueError:
+        await update.message.reply_text("Не смог разобрать речь. Попробуй говорить чётче или напиши текстом.")
+    except Exception as e:
+        print(f"Ошибка голоса: {type(e).__name__}: {e}")
+        await update.message.reply_text(f"Ошибка обработки голоса: {e}")
+
+
 def main():
     if not BOT_TOKEN:
         print("ОШИБКА: Не задана переменная TELEGRAM_BOT_TOKEN")
@@ -189,6 +253,7 @@ def main():
     app.add_handler(CommandHandler("clear", clear))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.Document.PDF, handle_document))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
     print("Джарвис работает. Ctrl+C для остановки.")
     app.run_polling()
