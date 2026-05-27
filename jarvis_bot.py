@@ -256,15 +256,16 @@ def main():
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
     webhook_url = os.environ.get("WEBHOOK_URL", "")
-    port = int(os.environ.get("PORT", 8443))
+    port = int(os.environ.get("PORT", 8080))
 
     if webhook_url:
-        print(f"Джарвис запускается на webhook: {webhook_url}")
+        print(f"Джарвис запускается на webhook: {webhook_url}, порт: {port}")
         app.run_webhook(
             listen="0.0.0.0",
             port=port,
             webhook_url=webhook_url,
             drop_pending_updates=True,
+            secret_token=None,
         )
     else:
         print("Джарвис работает в режиме polling.")
