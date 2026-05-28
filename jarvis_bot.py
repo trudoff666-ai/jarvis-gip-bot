@@ -140,36 +140,45 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not doc.file_name.lower().endswith(".pdf"):
         await update.message.reply_text("Пока работаю только с PDF файлами.")
         return
-    await update.message.reply_text(f"Получил: {doc.file_name}\nАнализирую...")
-    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+    status_msg = await update.message.reply_text(f"📄 Получил: {doc.file_name}\n⏳ Анализирую... (~30 сек)")
     file = await context.bot.get_file(doc.file_id)
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
         await file.download_to_drive(tmp.name)
         pdf_b64 = base64.standard_b64encode(open(tmp.name, "rb").read()).decode()
-    caption = update.message.caption or "Проанализируй этот раздел ПД как ГИП. Найди несоответствия нормам, ошибки и риски."
+    caption = update.message.caption or "Проанализируй этот раздел ПД как ГИП. Кратко: КРИТИЧНО / ВАЖНО / НЕЗНАЧИТЕЛЬНО. Конкретные листы, оси, отметки. Без воды."
     history = get_history(chat_id)
     history.append({"role": "user", "content": [
         {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64}},
         {"type": "text", "text": caption}
     ]})
+
+    async def keep_typing():
+        while True:
+            await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+            await asyncio.sleep(4)
+
+    typing_task = asyncio.create_task(keep_typing())
     try:
         response = await asyncio.get_running_loop().run_in_executor(
             None,
             lambda: ai_client.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=8192,
+                max_tokens=4096,
                 system=JARVIS_SYSTEM_PROMPT,
                 messages=history
             )
         )
         reply = response.content[0].text
         history.append({"role": "assistant", "content": reply})
+        await status_msg.delete()
         for i in range(0, len(reply), 4000):
             await update.message.reply_text(reply[i:i+4000])
     except Exception as e:
         history.pop()
         logger.error(f"handle_document: {e}")
-        await update.message.reply_text(f"Ошибка анализа PDF: {e}")
+        await status_msg.edit_text(f"❌ Ошибка анализа PDF: {e}")
+    finally:
+        typing_task.cancel()
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
