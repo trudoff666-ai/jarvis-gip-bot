@@ -4,3 +4,4 @@ SpeechRecognition==3.11.0
 pydub==0.25.1
 fastapi
 uvicorn[standard]
+python-dotenv

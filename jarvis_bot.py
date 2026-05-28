@@ -1,5 +1,17 @@
 import os
+import shutil
 import asyncio
+from dotenv import load_dotenv
+load_dotenv()
+
+# Явно добавляем ffmpeg в PATH если он установлен через winget но не виден в сессии
+_FFMPEG_WINGET = (
+    r"C:\Users\User\AppData\Local\Microsoft\WinGet\Packages"
+    r"\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe"
+    r"\ffmpeg-8.1.1-full_build\bin"
+)
+if os.path.isdir(_FFMPEG_WINGET) and _FFMPEG_WINGET not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = _FFMPEG_WINGET + os.pathsep + os.environ.get("PATH", "")
 import logging
 import anthropic
 import speech_recognition as sr
@@ -161,6 +173,17 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
+
+    if not shutil.which("ffmpeg"):
+        await update.message.reply_text(
+            "⚠️ ffmpeg не установлен — голосовые сообщения недоступны.\n\n"
+            "Установите ffmpeg:\n"
+            "1. Скачайте: https://ffmpeg.org/download.html\n"
+            "2. Распакуйте и добавьте папку bin\\ в системный PATH\n"
+            "3. Перезапустите бота"
+        )
+        return
+
     await update.message.reply_text("Слушаю...")
     try:
         file = await context.bot.get_file(update.message.voice.file_id)
@@ -240,6 +263,29 @@ async def on_shutdown():
     await ptb_app.stop()
     await ptb_app.shutdown()
 
+
+def run_polling():
+    """Режим polling для локального запуска без WEBHOOK_URL."""
+    # Удаляем webhook в отдельном event loop перед стартом
+    async def _delete_webhook():
+        from telegram import Bot as _Bot
+        async with _Bot(token=BOT_TOKEN) as tmp_bot:
+            await tmp_bot.delete_webhook(drop_pending_updates=True)
+
+    asyncio.run(_delete_webhook())
+    logger.info("Webhook удалён, запускаю polling...")
+
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("clear", clear))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.Document.PDF, handle_document))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    print("Джарвис запущен в режиме POLLING (локальный)")
+    app.run_polling(drop_pending_updates=True)
+
+
 if __name__ == "__main__":
     if not BOT_TOKEN:
         print("ОШИБКА: TELEGRAM_BOT_TOKEN не задан")
@@ -247,8 +293,10 @@ if __name__ == "__main__":
     if not ANTHROPIC_API_KEY:
         print("ОШИБКА: ANTHROPIC_API_KEY не задан")
         exit(1)
-    if not WEBHOOK_URL:
-        print("ОШИБКА: WEBHOOK_URL не задан")
-        exit(1)
-    print(f"Джарвис запускается на порту {PORT}...")
-    uvicorn.run(fastapi_app, host="0.0.0.0", port=PORT)
+
+    if WEBHOOK_URL:
+        print(f"Джарвис запускается в режиме WEBHOOK на порту {PORT}...")
+        uvicorn.run(fastapi_app, host="0.0.0.0", port=PORT)
+    else:
+        print("WEBHOOK_URL не задан — запускаю в режиме POLLING")
+        run_polling()
