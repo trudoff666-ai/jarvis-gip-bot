@@ -140,6 +140,15 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not doc.file_name.lower().endswith(".pdf"):
         await update.message.reply_text("Пока работаю только с PDF файлами.")
         return
+    if doc.file_size and doc.file_size > 19 * 1024 * 1024:
+        size_mb = doc.file_size / 1024 / 1024
+        await update.message.reply_text(
+            f"⚠️ Файл слишком большой: {size_mb:.1f}МБ\n\n"
+            f"Максимум: 19МБ\n\n"
+            f"Разбейте PDF на части по 50-60 страниц и отправляйте по одной части.\n"
+            f"Например: Листы 1-50, Листы 51-100 и т.д."
+        )
+        return
     status_msg = await update.message.reply_text(f"📄 Получил: {doc.file_name}\n⏳ Анализирую... (~30 сек)")
     file = await context.bot.get_file(doc.file_id)
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
