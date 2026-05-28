@@ -1,6 +1,6 @@
 [build]
-builder = "NIXPACKS"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "python jarvis_bot.py"
 restartPolicyType = "ON_FAILURE"
